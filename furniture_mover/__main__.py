@@ -13,6 +13,7 @@ async def main():
     fm = FurnitureMover(config)
     try:
         await fm.save_all_docs("tmp/test.txt", "test")
+        await fm.insert_all_docs("tmp/test.txt", "test2")
     finally:
         await fm.close()
 

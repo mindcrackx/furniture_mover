@@ -46,14 +46,14 @@ class CouchDb:
 
     async def create_db(self, db: str, exists_ok_if_empty: bool = True) -> None:
         try:
-            response = await self._client.put(f"/{db}")
+            response = await self._client.put(f"{db}")
             response.raise_for_status()
         except HTTPError:
             if response.status_code == 401:
                 sys.exit("Unauthorized: User or Password is wrong or missing.")
             if exists_ok_if_empty:
                 if response.status_code == 412:
-                    db_info = await self._client.get(f"/{db}")
+                    db_info = await self._client.get(f"{db}")
                     db_info.raise_for_status()
                     if db_info.json()["doc_count"] == 0:
                         return
@@ -65,7 +65,7 @@ class CouchDb:
 
     async def get_all_docs(self, db: str) -> AsyncIterator[dict]:
         try:
-            response = await self._client.get(f"/{db}/_all_docs?include_docs=true")
+            response = await self._client.get(f"{db}/_all_docs?include_docs=true")
             response.raise_for_status()
         except HTTPError:
             if response.status_code == 401:
@@ -95,7 +95,7 @@ class CouchDb:
         del doc["_rev"]
 
         try:
-            response = await self._client.put(f"/{db}/{doc_id}", json=doc)
+            response = await self._client.put(f"{db}/{doc_id}", json=doc)
             response.raise_for_status()
         except HTTPError:
             if response.status_code == 401:
@@ -108,7 +108,7 @@ class CouchDb:
             return
 
         try:
-            response = await self._client.get(f"/{db}/{doc_id}")
+            response = await self._client.get(f"{db}/{doc_id}")
             response.raise_for_status()
         except HTTPError:
             if response.status_code == 401:
@@ -123,7 +123,7 @@ class CouchDb:
         while current_doc_rev_num < doc_rev_num:
             try:
                 updatresponse = await self._client.put(
-                    f"/{db}/{doc_id}?rev={current_doc_rev}", json=doc
+                    f"{db}/{doc_id}?rev={current_doc_rev}", json=doc
                 )
                 updatresponse.raise_for_status()
             except HTTPError:
@@ -134,7 +134,7 @@ class CouchDb:
                 )
 
             try:
-                response = await self._client.get(f"/{db}/{doc_id}")
+                response = await self._client.get(f"{db}/{doc_id}")
                 response.raise_for_status()
             except HTTPError:
                 if response.status_code == 401:

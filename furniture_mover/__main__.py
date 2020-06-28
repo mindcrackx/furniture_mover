@@ -1,5 +1,5 @@
 import asyncio
-import logging  # noqa
+import os
 from typing import Optional
 
 import typer
@@ -7,7 +7,9 @@ import typer
 from furniture_mover.config import Config
 from furniture_mover.furniture_mover import FurnitureMover
 
-# logging.basicConfig(level=logging.DEBUG)
+if os.name == "nt":
+    # https://stackoverflow.com/questions/62412754/python-asyncio-errors-oserror-winerror-6-the-handle-is-invalid-and-runtim
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 async def import_data(
@@ -53,11 +55,10 @@ def main(
         typer.Exit()
 
     if export:
-        asyncio.run(export_data(config, filepath, db), debug=True)
+        asyncio.run(export_data(config, filepath, db))
     if Import:
         asyncio.run(
-            import_data(config, db, db_exists_ok_if_empty, same_revision, filepath),
-            debug=True,
+            import_data(config, db, db_exists_ok_if_empty, same_revision, filepath)
         )
 
 

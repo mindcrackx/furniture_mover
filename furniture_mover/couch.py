@@ -84,11 +84,11 @@ class CouchDb:
             yield row["doc"]
 
     async def insert_doc(self, db: str, doc: dict, same_revision: bool = True) -> None:
-        def _get_rev_num_from_doc(doc: dict) -> str:
-            return doc["_rev"].split("-")[0]
+        def _get_rev_num_from_doc(doc: dict) -> int:
+            return int(doc["_rev"].split("-")[0])
 
-        def _get_rev_num_from_rev(rev: str) -> str:
-            return rev.split("-")[0]
+        def _get_rev_num_from_rev(rev: str) -> int:
+            return int(rev.split("-")[0])
 
         doc_id = doc["_id"]
         doc_rev_num = _get_rev_num_from_doc(doc)

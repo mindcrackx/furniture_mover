@@ -84,6 +84,8 @@ class CouchDb:
                     return
                 else:
                     sys.exit(f"Database {db} exists but is not empty. Aborting.")
+            else:
+                sys.exit(f"Database {db} already exists. Aborting.")
 
     async def get_all_docs(self, db: str) -> AsyncIterator[dict]:
         with self.handle_web():

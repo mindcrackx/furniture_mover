@@ -1,8 +1,9 @@
 import sys
-from typing import AsyncIterator
+from contextlib import contextmanager
+from typing import AsyncIterator, List
 
 import httpx
-from httpx._exceptions import HTTPError
+from httpx._exceptions import ConnectError, ConnectTimeout, HTTPError, InvalidURL
 
 from furniture_mover.config import Config
 
@@ -16,63 +17,78 @@ class CouchDb:
         if self._config.user and self._config.password:
             self._authentication = (self._config.user, self._config.password)
 
-        if self._config.user and self._config.password:
-            self._client = httpx.AsyncClient(
-                proxies=self._config.proxy,
-                timeout=self._config.timeout,
-                base_url=self._config.url,
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept-Charset": "utf-8",
-                    "Cache-Control": "no-cache",
-                },
-                auth=(self._config.user, self._config.password),
-            )
+        try:
+            if self._config.user and self._config.password:
+                self._client = httpx.AsyncClient(
+                    proxies=self._config.proxy,
+                    timeout=self._config.timeout,
+                    base_url=self._config.url,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Accept-Charset": "utf-8",
+                        "Cache-Control": "no-cache",
+                    },
+                    auth=(self._config.user, self._config.password),
+                )
 
-        else:
-            self._client = httpx.AsyncClient(
-                proxies=self._config.proxy,
-                timeout=self._config.timeout,
-                base_url=self._config.url,
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept-Charset": "utf-8",
-                    "Cache-Control": "no-cache",
-                },
-            )
+            else:
+                self._client = httpx.AsyncClient(
+                    proxies=self._config.proxy,
+                    timeout=self._config.timeout,
+                    base_url=self._config.url,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Accept-Charset": "utf-8",
+                        "Cache-Control": "no-cache",
+                    },
+                )
+        except InvalidURL as e:
+            sys.exit(f"Got an invalid URL {self._config.url}. {str(e)}")
 
     async def close(self) -> None:
         await self._client.aclose()
 
+    @contextmanager
+    def handle_web(self, raise_status: List[int] = []):
+        try:
+            yield
+        except HTTPError as e:
+            if e.response is not None:
+                if e.response.status_code in raise_status:
+                    raise e
+                if e.response.status_code == 401:
+                    sys.exit("Unauthorized: User or Password is wrong or missing.")
+                else:
+                    sys.exit(
+                        f"Got unexpected status code {e.response.status_code} with message {e.response.text}"  # noqa
+                    )
+        except ConnectError as e:
+            sys.exit(f"Error connecting with base_url {self._client.base_url} {str(e)}")
+        except ConnectTimeout as e:
+            sys.exit(
+                f"Timeout Error connecting with base_url {self._client.base_url} {str(e)}"
+            )
+        except Exception as e:
+            sys.exit(f"Got unexpected exception: {str(e)}")
+
     async def create_db(self, db: str, exists_ok_if_empty: bool = True) -> None:
         try:
-            response = await self._client.put(f"{db}")
-            response.raise_for_status()
+            with self.handle_web(raise_status=[412]):
+                response = await self._client.put(f"{db}")
+                response.raise_for_status()
         except HTTPError:
-            if response.status_code == 401:
-                sys.exit("Unauthorized: User or Password is wrong or missing.")
             if exists_ok_if_empty:
-                if response.status_code == 412:
-                    db_info = await self._client.get(f"{db}")
-                    db_info.raise_for_status()
-                    if db_info.json()["doc_count"] == 0:
-                        return
-                    else:
-                        sys.exit(f"Database {db} exists but is not empty. Aborting.")
-            sys.exit(
-                f"Got unexpected status code {response.status_code} with message {response.text}"
-            )
+                db_info = await self._client.get(f"{db}")
+                db_info.raise_for_status()
+                if db_info.json()["doc_count"] == 0:
+                    return
+                else:
+                    sys.exit(f"Database {db} exists but is not empty. Aborting.")
 
     async def get_all_docs(self, db: str) -> AsyncIterator[dict]:
-        try:
+        with self.handle_web():
             response = await self._client.get(f"{db}/_all_docs?include_docs=true")
             response.raise_for_status()
-        except HTTPError:
-            if response.status_code == 401:
-                sys.exit("Unauthorized: User or Password is wrong or missing.")
-            sys.exit(
-                f"Got unexpected status code {response.status_code} with message {response.text}"
-            )
 
         data = response.json()
         if "rows" not in data:
@@ -94,54 +110,30 @@ class CouchDb:
         doc_rev_num = _get_rev_num_from_doc(doc)
         del doc["_rev"]
 
-        try:
+        with self.handle_web():
             response = await self._client.put(f"{db}/{doc_id}", json=doc)
             response.raise_for_status()
-        except HTTPError:
-            if response.status_code == 401:
-                sys.exit("Unauthorized: User or Password is wrong or missing.")
-            sys.exit(
-                f"Got unexpected status code {response.status_code} with message {response.text}"
-            )
 
         if not same_revision or doc_rev_num == "1":
             return
 
-        try:
+        with self.handle_web():
             response = await self._client.get(f"{db}/{doc_id}")
             response.raise_for_status()
-        except HTTPError:
-            if response.status_code == 401:
-                sys.exit("Unauthorized: User or Password is wrong or missing.")
-            sys.exit(
-                f"Got unexpected status code {response.status_code} with message {response.text}"
-            )
 
         current_doc_rev = response.json()["_rev"]
         current_doc_rev_num = _get_rev_num_from_rev(current_doc_rev)
 
         while current_doc_rev_num < doc_rev_num:
-            try:
+            with self.handle_web():
                 updatresponse = await self._client.put(
                     f"{db}/{doc_id}?rev={current_doc_rev}", json=doc
                 )
                 updatresponse.raise_for_status()
-            except HTTPError:
-                if response.status_code == 401:
-                    sys.exit("Unauthorized: User or Password is wrong or missing.")
-                sys.exit(
-                    f"Got unexpected status code {response.status_code} with message {response.text}"
-                )
 
-            try:
+            with self.handle_web():
                 response = await self._client.get(f"{db}/{doc_id}")
                 response.raise_for_status()
-            except HTTPError:
-                if response.status_code == 401:
-                    sys.exit("Unauthorized: User or Password is wrong or missing.")
-                sys.exit(
-                    f"Got unexpected status code {response.status_code} with message {response.text}"
-                )
 
             current_doc_rev = response.json()["_rev"]
             current_doc_rev_num = _get_rev_num_from_rev(current_doc_rev)

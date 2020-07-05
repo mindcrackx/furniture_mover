@@ -415,3 +415,38 @@ def test_import_with_db_exists_ok_if_empty__NOT_empty_db_exists(
         in result.stdout
     )
     assert result.exit_code == 1
+
+
+def test_export_from_all_docs_file():
+    data = """
+{"total_rows":4,"offset":0,"rows":[
+{"id":"testdoc_1","key":"testdoc_1","value":{"rev":"3-825cb35de44c433bfb2df415563a19de"},"doc":{"_id":"testdoc_1","_rev":"3-825cb35de44c433bfb2df415563a19de"}},
+{"id":"testdoc_2","key":"testdoc_2","value":{"rev":"1-c3d84a0ca6114a8e8fbef75dc8c7be00"},"doc":{"_id":"testdoc_2","_rev":"1-c3d84a0ca6114a8e8fbef75dc8c7be00","test":"test"}},
+{"id":"testdoc_3","key":"testdoc_3","value":{"rev":"15-305afde91ffef71edcff06458e17c186"},"doc":{"_id":"testdoc_3","_rev":"15-305afde91ffef71edcff06458e17c186","test":"test","another":"test"}},
+{"id":"testdoc_4","key":"testdoc_4","value":{"rev":"1-967a00dff5e02add41819138abb3284d"},"doc":{"_id":"testdoc_4","_rev":"1-967a00dff5e02add41819138abb3284d"}}
+]}
+    """.strip()
+
+    with NamedTemporaryFile() as tmpfile1:
+        filename1 = tmpfile1.name
+        print(filename1)
+    with NamedTemporaryFile() as tmpfile2:
+        filename2 = tmpfile2.name
+        print(filename2)
+
+    with open(filename1, "w", encoding="utf8") as inf:
+        inf.write(data)
+
+    result = runner.invoke(app, ["export_from_all_docs_file", filename1, filename2])
+    print(result.stdout)
+    assert result.exit_code == 0
+
+    expected_output = """
+{"_id": "testdoc_1", "_rev": "3-825cb35de44c433bfb2df415563a19de"}
+{"_id": "testdoc_2", "_rev": "1-c3d84a0ca6114a8e8fbef75dc8c7be00", "test": "test"}
+{"_id": "testdoc_3", "_rev": "15-305afde91ffef71edcff06458e17c186", "test": "test", "another": "test"}
+{"_id": "testdoc_4", "_rev": "1-967a00dff5e02add41819138abb3284d"}
+""".lstrip()
+
+    with open(filename2, "r", encoding="utf8") as outf:
+        assert outf.read() == expected_output

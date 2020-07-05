@@ -44,3 +44,18 @@ class FurnitureMover:
                 )
         except Exception as e:
             sys.exit(f"Exception opening or writing file: {str(e)}")
+
+    @staticmethod
+    async def from_all_docs_file(infile: Path, outfile: Path) -> None:
+        data = None
+        try:
+            async with aiofiles.open(infile, mode="r", encoding="utf-8") as inf:
+                data = json.loads(await inf.read())
+                print(data)
+        except Exception as e:
+            sys.exit(f"Exception opening or reading file {infile}: {str(e)}")
+
+        if data is not None and "rows" in data:
+            async with aiofiles.open(outfile, mode="w", encoding="utf-8") as outf:
+                for row in data["rows"]:
+                    await outf.write(json.dumps(row["doc"], ensure_ascii=False) + "\n")

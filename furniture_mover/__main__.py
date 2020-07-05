@@ -1,5 +1,6 @@
 import asyncio
 import os
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -17,8 +18,7 @@ app = typer.Typer()
 
 @app.command("import")
 def import_data(
-    # config: Config, db, db_exists_ok_if_empty: bool, same_revision: bool, filepath: str
-    filepath: str,
+    filepath: Path,
     db: str,
     url: str = typer.Option("http://localhost:5984"),
     user: Optional[str] = typer.Option(None),
@@ -44,8 +44,7 @@ def import_data(
 
 @app.command("export")
 def export_data(
-    # config: Config, filepath: str, db: str
-    filepath: str,
+    filepath: Path,
     db: str,
     url: str = typer.Option("http://localhost:5984"),
     user: Optional[str] = typer.Option(None),
@@ -65,6 +64,14 @@ def export_data(
             await fm.close()
 
     asyncio.run(_run(config, filepath, db))
+
+
+@app.command("export_from_all_docs_file")
+def export_data_from_all_docs_file(all_docs_filepath: Path, filepath: Path) -> None:
+    async def _run(infile, outfile):
+        await FurnitureMover.from_all_docs_file(all_docs_filepath, filepath)
+
+    asyncio.run(_run(all_docs_filepath, filepath))
 
 
 if __name__ == "__main__":

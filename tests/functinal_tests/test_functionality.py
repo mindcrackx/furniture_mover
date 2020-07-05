@@ -2,14 +2,10 @@ import json
 from tempfile import NamedTemporaryFile
 
 import httpx
-import typer
 from typer.testing import CliRunner
 
-from furniture_mover.__main__ import main
+from furniture_mover.__main__ import app
 from tests.functinal_tests.conftest import DOCS, MASTER_DB, get_rev_num_from_doc
-
-app = typer.Typer()
-app.command()(main)
 
 runner = CliRunner()
 
@@ -19,11 +15,11 @@ def test_invalid_no_credentials(setup_masterdb, drop_dbs):
         filename = tmpfile.name
         print(filename)
 
-    result = runner.invoke(app, ["--export", filename, MASTER_DB])
+    result = runner.invoke(app, ["export", filename, MASTER_DB])
     assert result.exit_code == 1
     assert "Unauthorized: User or Password is wrong or missing." in result.stdout
 
-    result = runner.invoke(app, ["--import", filename, MASTER_DB])
+    result = runner.invoke(app, ["import", filename, MASTER_DB])
     assert result.exit_code == 1
     assert "Unauthorized: User or Password is wrong or missing." in result.stdout
 
@@ -35,15 +31,7 @@ def test_export(setup_masterdb, drop_dbs):
 
     result = runner.invoke(
         app,
-        [
-            "--export",
-            "--user",
-            "admin",
-            "--password",
-            "adminadmin",
-            filename,
-            MASTER_DB,
-        ],
+        ["export", "--user", "admin", "--password", "adminadmin", filename, MASTER_DB],
     )
     data = []
     with open(filename, "r", encoding="utf8") as inf:
@@ -85,7 +73,7 @@ def test_import(setup_masterdb, drop_dbs):
     result = runner.invoke(
         app,
         [
-            "--import",
+            "import",
             "--user",
             "admin",
             "--password",
@@ -119,7 +107,7 @@ def test_import_file_does_not_exist(setup_masterdb, drop_dbs):
     result = runner.invoke(
         app,
         [
-            "--import",
+            "import",
             "--user",
             "admin",
             "--password",
@@ -143,7 +131,7 @@ def test_url_not_fount(setup_masterdb, drop_dbs):
     result = runner.invoke(
         app,
         [
-            "--export",
+            "export",
             "--user",
             "admin",
             "--password",
@@ -164,7 +152,7 @@ def test_url_not_fount(setup_masterdb, drop_dbs):
     result = runner.invoke(
         app,
         [
-            "--import",
+            "import",
             "--user",
             "admin",
             "--password",
@@ -191,7 +179,7 @@ def test_invalid_url(setup_masterdb, drop_dbs):
     result = runner.invoke(
         app,
         [
-            "--export",
+            "export",
             "--user",
             "admin",
             "--password",
@@ -236,7 +224,7 @@ def test_import_with_no_same_revision(setup_masterdb, drop_dbs):
     result = runner.invoke(
         app,
         [
-            "--import",
+            "import",
             "--user",
             "admin",
             "--password",
@@ -301,7 +289,7 @@ def test_import_with_no_db_exists_ok_if_empty__empty_db_exists(
     result = runner.invoke(
         app,
         [
-            "--import",
+            "import",
             "--user",
             "admin",
             "--password",
@@ -349,7 +337,7 @@ def test_import_with_db_exists_ok_if_empty__empty_db_exists(setup_masterdb, drop
     result = runner.invoke(
         app,
         [
-            "--import",
+            "import",
             "--user",
             "admin",
             "--password",
@@ -411,7 +399,7 @@ def test_import_with_db_exists_ok_if_empty__NOT_empty_db_exists(
     result = runner.invoke(
         app,
         [
-            "--import",
+            "import",
             "--user",
             "admin",
             "--password",

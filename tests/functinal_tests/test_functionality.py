@@ -450,3 +450,61 @@ def test_export_from_all_docs_file():
 
     with open(filename2, "r", encoding="utf8") as outf:
         assert outf.read() == expected_output
+
+
+def test_filter():
+    with NamedTemporaryFile() as tmpfile_filter:
+        filename_filter = tmpfile_filter.name
+        print(filename_filter)
+
+    with NamedTemporaryFile() as tmpfile_outfile_1:
+        filename_outfile_1 = tmpfile_outfile_1.name
+        print(filename_outfile_1)
+
+    with NamedTemporaryFile() as tmpfile_outfile_2:
+        filename_outfile_2 = tmpfile_outfile_2.name
+        print(filename_outfile_2)
+
+    with NamedTemporaryFile() as tmpfile_infile:
+        filename_infile = tmpfile_infile.name
+        print(filename_infile)
+
+    with open(filename_filter, "w", encoding="utf-8") as inf:
+        filter_ = [
+            {"filepath": filename_outfile_1, "regex_filters": ["^.*?_a_\\d+$"]},
+            {
+                "filepath": filename_outfile_2,
+                "regex_filters": ["^.*?_b_\\d+$", "^.*?_c_\\d+$"],
+            },
+        ]
+        inf.write(json.dumps(filter_, ensure_ascii=False, indent=4))
+
+    with open(filename_infile, "w", encoding="utf-8") as inf:
+        data = """
+{"_id": "test_a_1", "_rev": "3-825cb35de44c433bfb2df415563a19de"}
+{"_id": "test_a_2", "_rev": "1-34333f0454a81dc3559c356a5df072fc", "test": "test_a"}
+{"_id": "test_b_1", "_rev": "4-f6647f1364a5944f9dcd3b9bf77329bd", "test": "b"}
+{"_id": "test_b_3", "_rev": "2-7051cbe5c8faecd085a3fa619e6e6337"}
+{"_id": "test_c_1", "_rev": "1-967a00dff5e02add41819138abb3284d"}
+""".strip()
+        inf.write(data)
+
+    result = runner.invoke(app, ["filter", filename_filter, filename_infile])
+
+    print(result.stdout)
+    assert result.exit_code == 0
+
+    with open(filename_outfile_1, "r", encoding="utf-8") as outf1:
+        expected_output_1 = """
+{"_id": "test_a_1", "_rev": "3-825cb35de44c433bfb2df415563a19de"}
+{"_id": "test_a_2", "_rev": "1-34333f0454a81dc3559c356a5df072fc", "test": "test_a"}
+""".lstrip()
+        assert expected_output_1 == outf1.read()
+
+    with open(filename_outfile_2, "r", encoding="utf-8") as outf2:
+        expected_output_2 = """
+{"_id": "test_b_1", "_rev": "4-f6647f1364a5944f9dcd3b9bf77329bd", "test": "b"}
+{"_id": "test_b_3", "_rev": "2-7051cbe5c8faecd085a3fa619e6e6337"}
+{"_id": "test_c_1", "_rev": "1-967a00dff5e02add41819138abb3284d"}
+""".lstrip()
+        assert expected_output_2 == outf2.read()

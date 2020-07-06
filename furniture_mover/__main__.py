@@ -74,5 +74,13 @@ def export_data_from_all_docs_file(all_docs_filepath: Path, filepath: Path) -> N
     asyncio.run(_run(all_docs_filepath, filepath))
 
 
+@app.command("filter")
+def filter(filter_file: Path, infile: Path) -> None:
+    async def _run(filter_file, infile) -> None:
+        await FurnitureMover.filter_infile(filter_file, infile)
+
+    asyncio.run(_run(filter_file, infile))
+
+
 if __name__ == "__main__":
     app()

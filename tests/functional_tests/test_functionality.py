@@ -5,7 +5,7 @@ from requests_toolbelt import sessions
 from typer.testing import CliRunner
 
 from furniture_mover.__main__ import app
-from tests.functinal_tests.conftest import DOCS, MASTER_DB, get_rev_num_from_doc
+from tests.functional_tests.conftest import DOCS, MASTER_DB, get_rev_num_from_doc
 
 runner = CliRunner()
 

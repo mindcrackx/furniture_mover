@@ -1,6 +1,6 @@
 import sys
 from contextlib import contextmanager
-from typing import AsyncIterator, List
+from typing import Iterator, List
 
 import httpx
 from httpx._exceptions import ConnectError, ConnectTimeout, HTTPError, InvalidURL
@@ -14,7 +14,7 @@ class CouchDb:
 
         try:
             if self._config.user and self._config.password:
-                self._client = httpx.AsyncClient(
+                self._client = httpx.Client(
                     proxies=self._config.proxy,
                     timeout=self._config.timeout,
                     base_url=self._config.url,
@@ -27,7 +27,7 @@ class CouchDb:
                 )
 
             else:
-                self._client = httpx.AsyncClient(
+                self._client = httpx.Client(
                     proxies=self._config.proxy,
                     timeout=self._config.timeout,
                     base_url=self._config.url,
@@ -40,8 +40,8 @@ class CouchDb:
         except InvalidURL as e:
             sys.exit(f"Got an invalid URL {self._config.url}. {str(e)}")
 
-    async def close(self) -> None:
-        await self._client.aclose()
+    def close(self) -> None:
+        self._client.close()
 
     @contextmanager
     def handle_web(self, raise_status: List[int] = []):
@@ -66,14 +66,14 @@ class CouchDb:
         except Exception as e:
             sys.exit(f"Got unexpected exception: {str(e)}")
 
-    async def create_db(self, db: str, exists_ok_if_empty: bool = True) -> None:
+    def create_db(self, db: str, exists_ok_if_empty: bool = True) -> None:
         try:
             with self.handle_web(raise_status=[412]):
-                response = await self._client.put(f"{db}")
+                response = self._client.put(f"{db}")
                 response.raise_for_status()
         except HTTPError:
             if exists_ok_if_empty:
-                db_info = await self._client.get(f"{db}")
+                db_info = self._client.get(f"{db}")
                 db_info.raise_for_status()
                 if db_info.json()["doc_count"] == 0:
                     return
@@ -82,9 +82,9 @@ class CouchDb:
             else:
                 sys.exit(f"Database {db} already exists. Aborting.")
 
-    async def get_all_docs(self, db: str) -> AsyncIterator[dict]:
+    def get_all_docs(self, db: str) -> Iterator[dict]:
         with self.handle_web():
-            response = await self._client.get(f"{db}/_all_docs?include_docs=true")
+            response = self._client.get(f"{db}/_all_docs?include_docs=true")
             response.raise_for_status()
 
         data = response.json()
@@ -96,7 +96,7 @@ class CouchDb:
         for row in data["rows"]:
             yield row["doc"]
 
-    async def insert_doc(self, db: str, doc: dict, same_revision: bool = True) -> None:
+    def insert_doc(self, db: str, doc: dict, same_revision: bool = True) -> None:
         def _get_rev_num_from_doc(doc: dict) -> int:
             return int(doc["_rev"].split("-")[0])
 
@@ -108,14 +108,14 @@ class CouchDb:
         del doc["_rev"]
 
         with self.handle_web():
-            response = await self._client.put(f"{db}/{doc_id}", json=doc)
+            response = self._client.put(f"{db}/{doc_id}", json=doc)
             response.raise_for_status()
 
         if not same_revision or doc_rev_num == "1":
             return
 
         with self.handle_web():
-            response = await self._client.get(f"{db}/{doc_id}")
+            response = self._client.get(f"{db}/{doc_id}")
             response.raise_for_status()
 
         current_doc_rev = response.json()["_rev"]
@@ -123,13 +123,13 @@ class CouchDb:
 
         while current_doc_rev_num < doc_rev_num:
             with self.handle_web():
-                updatresponse = await self._client.put(
+                updatresponse = self._client.put(
                     f"{db}/{doc_id}?rev={current_doc_rev}", json=doc
                 )
                 updatresponse.raise_for_status()
 
             with self.handle_web():
-                response = await self._client.get(f"{db}/{doc_id}")
+                response = self._client.get(f"{db}/{doc_id}")
                 response.raise_for_status()
 
             current_doc_rev = response.json()["_rev"]

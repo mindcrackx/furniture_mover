@@ -1,11 +1,11 @@
 import json
 from tempfile import NamedTemporaryFile
 
-import httpx
+from requests_toolbelt import sessions
 from typer.testing import CliRunner
 
 from furniture_mover.__main__ import app
-from tests.functinal_tests.conftest import DOCS, MASTER_DB, get_rev_num_from_doc
+from tests.functional_tests.conftest import DOCS, MASTER_DB, get_rev_num_from_doc
 
 runner = CliRunner()
 
@@ -86,11 +86,10 @@ def test_import(setup_masterdb, drop_dbs):
     print(result.stdout)
     assert result.exit_code == 0
 
-    with httpx.Client(
+    with sessions.BaseUrlSession(
         base_url="http://localhost:5984/import_testdb/",
-        auth=("admin", "adminadmin"),
-        timeout=3,
     ) as client:
+        client.auth = ("admin", "adminadmin")
         assert len(data) == client.get("").json()["doc_count"]
         for doc in data:
             response = client.get(doc["_id"])
@@ -123,7 +122,7 @@ def test_import_file_does_not_exist(setup_masterdb, drop_dbs):
     )
 
 
-def test_url_not_fount(setup_masterdb, drop_dbs):
+def test_url_not_found(setup_masterdb, drop_dbs):
     with NamedTemporaryFile() as tmpfile:
         filename = tmpfile.name
         print(filename)
@@ -138,6 +137,8 @@ def test_url_not_fount(setup_masterdb, drop_dbs):
             "adminadmin",
             "--url",
             "http://lhkjhasgdfbkajvchlaskjehrnvasgfhsalkdjfhabsfkhge/",
+            "--timeout",
+            "0.2",
             filename,
             "import_testdb",
         ],
@@ -145,7 +146,7 @@ def test_url_not_fount(setup_masterdb, drop_dbs):
     print(result.stdout)
     assert result.exit_code == 1
     assert (
-        "Error connecting with base_url http://lhkjhasgdfbkajvchlaskjehrnvasgfhsalkdjfhabsfkhge/ [Errno 11001] getaddrinfo failed"  # noqa
+        "Error connecting with base_url http://lhkjhasgdfbkajvchlaskjehrnvasgfhsalkdjfhabsfkhge/"
         in result.stdout
     )
 
@@ -159,6 +160,8 @@ def test_url_not_fount(setup_masterdb, drop_dbs):
             "adminadmin",
             "--url",
             "http://lhkjhasgdfbkajvchlaskjehrnvasgfhsalkdjfhabsfkhge/",
+            "--timeout",
+            "0.2",
             filename,
             "import_testdb",
         ],
@@ -166,12 +169,12 @@ def test_url_not_fount(setup_masterdb, drop_dbs):
     print(result.stdout)
     assert result.exit_code == 1
     assert (
-        "Error connecting with base_url http://lhkjhasgdfbkajvchlaskjehrnvasgfhsalkdjfhabsfkhge/ [Errno 11001] getaddrinfo failed"  # noqa
+        "Error connecting with base_url http://lhkjhasgdfbkajvchlaskjehrnvasgfhsalkdjfhabsfkhge/"
         in result.stdout
     )
 
 
-def test_invalid_url(setup_masterdb, drop_dbs):
+def test_missing_schema(setup_masterdb, drop_dbs):
     with NamedTemporaryFile() as tmpfile:
         filename = tmpfile.name
         print(filename)
@@ -193,7 +196,7 @@ def test_invalid_url(setup_masterdb, drop_dbs):
     print(result.stdout)
     assert result.exit_code == 1
     assert (
-        "Got an invalid URL lhkjhasgdfbkajvchlaskjehrnvasgfhsalkdjfhabsfkhge/. No scheme included in URL."  # noqa
+        "Got an invalid url with missing schema Invalid URL 'lhkjhasgdfbkajvchlaskjehrnvasgfhsalkdjfhabsfkhge"  # noqa
         in result.stdout
     )
 
@@ -238,11 +241,10 @@ def test_import_with_no_same_revision(setup_masterdb, drop_dbs):
     print(result.stdout)
     assert result.exit_code == 0
 
-    with httpx.Client(
+    with sessions.BaseUrlSession(
         base_url="http://localhost:5984/import_testdb/",
-        auth=("admin", "adminadmin"),
-        timeout=3,
     ) as client:
+        client.auth = ("admin", "adminadmin")
         assert len(data) == client.get("").json()["doc_count"]
         for doc in data:
             response = client.get(doc["_id"])
@@ -280,9 +282,8 @@ def test_import_with_no_db_exists_ok_if_empty__empty_db_exists(
     with open(filename, "w", encoding="utf8") as inf:
         inf.write("\n".join(json.dumps(x) for x in data))
 
-    with httpx.Client(
-        base_url="http://localhost:5984/", auth=("admin", "adminadmin"), timeout=3,
-    ) as client:
+    with sessions.BaseUrlSession(base_url="http://localhost:5984/") as client:
+        client.auth = ("admin", "adminadmin")
         response = client.put("import_testdb_exists")
         assert response.status_code == 201
 
@@ -328,9 +329,8 @@ def test_import_with_db_exists_ok_if_empty__empty_db_exists(setup_masterdb, drop
     with open(filename, "w", encoding="utf8") as inf:
         inf.write("\n".join(json.dumps(x) for x in data))
 
-    with httpx.Client(
-        base_url="http://localhost:5984/", auth=("admin", "adminadmin"), timeout=3,
-    ) as client:
+    with sessions.BaseUrlSession(base_url="http://localhost:5984/") as client:
+        client.auth = ("admin", "adminadmin")
         response = client.put("import_testdb_exists")
         assert response.status_code == 201
 
@@ -350,11 +350,10 @@ def test_import_with_db_exists_ok_if_empty__empty_db_exists(setup_masterdb, drop
     print(result.stdout)
     assert result.exit_code == 0
 
-    with httpx.Client(
+    with sessions.BaseUrlSession(
         base_url="http://localhost:5984/import_testdb_exists/",
-        auth=("admin", "adminadmin"),
-        timeout=3,
     ) as client:
+        client.auth = ("admin", "adminadmin")
         assert len(data) == client.get("").json()["doc_count"]
         for doc in data:
             response = client.get(doc["_id"])
@@ -387,9 +386,8 @@ def test_import_with_db_exists_ok_if_empty__NOT_empty_db_exists(
     with open(filename, "w", encoding="utf8") as inf:
         inf.write("\n".join(json.dumps(x) for x in data))
 
-    with httpx.Client(
-        base_url="http://localhost:5984/", auth=("admin", "adminadmin"), timeout=3,
-    ) as client:
+    with sessions.BaseUrlSession(base_url="http://localhost:5984/") as client:
+        client.auth = ("admin", "adminadmin")
         response = client.put("import_testdb_exists")
         assert response.status_code == 201
         # insert 1 doc

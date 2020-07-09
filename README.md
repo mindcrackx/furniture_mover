@@ -21,6 +21,8 @@ poetry run flake8 tests
 
 poetry run mypy furniture_mover
 poetry run mypy tests
+
+poetry run pytest -v
 ```
 
 ## Testing:

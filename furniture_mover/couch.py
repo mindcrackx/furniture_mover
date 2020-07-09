@@ -12,11 +12,6 @@ class CouchDb:
     def __init__(self, config: Config) -> None:
         self._config = config
 
-        self._authentication = None
-
-        if self._config.user and self._config.password:
-            self._authentication = (self._config.user, self._config.password)
-
         try:
             if self._config.user and self._config.password:
                 self._client = httpx.AsyncClient(

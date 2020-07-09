@@ -2,43 +2,81 @@ import sys
 from contextlib import contextmanager
 from typing import Iterator, List
 
-import httpx
-from httpx._exceptions import ConnectError, ConnectTimeout, HTTPError, InvalidURL
+from requests.adapters import HTTPAdapter
+from requests.exceptions import (
+    ConnectionError,
+    ConnectTimeout,
+    HTTPError,
+    InvalidURL,
+    MissingSchema,
+)
+from requests.packages.urllib3.util.retry import Retry
+from requests_toolbelt import sessions
 
 from furniture_mover.config import Config
+
+
+class TimeoutHTTPAdapter(HTTPAdapter):
+    def __init__(self, *args, **kwargs):
+        self._timeout = 3
+        if "timeout" in kwargs:
+            self._timeout = kwargs["timeout"]
+            del kwargs["timeout"]
+        super().__init__(*args, **kwargs)
+
+    def send(self, request, **kwargs):
+        timeout = kwargs.get("timeout")
+        if timeout is None:
+            kwargs["timeout"] = self._timeout
+        return super().send(request, **kwargs)
 
 
 class CouchDb:
     def __init__(self, config: Config) -> None:
         self._config = config
 
-        try:
-            if self._config.user and self._config.password:
-                self._client = httpx.Client(
-                    proxies=self._config.proxy,
-                    timeout=self._config.timeout,
-                    base_url=self._config.url,
-                    headers={
-                        "Content-Type": "application/json",
-                        "Accept-Charset": "utf-8",
-                        "Cache-Control": "no-cache",
-                    },
-                    auth=(self._config.user, self._config.password),
-                )
+        self._client = sessions.BaseUrlSession(base_url=self._config.url)
 
-            else:
-                self._client = httpx.Client(
-                    proxies=self._config.proxy,
-                    timeout=self._config.timeout,
-                    base_url=self._config.url,
-                    headers={
-                        "Content-Type": "application/json",
-                        "Accept-Charset": "utf-8",
-                        "Cache-Control": "no-cache",
-                    },
-                )
-        except InvalidURL as e:
-            sys.exit(f"Got an invalid URL {self._config.url}. {str(e)}")
+        # always call raise_for_status()
+        assert_status_hook = (
+            lambda response, *args, **kwargs: response.raise_for_status()
+        )
+        self._client.hooks["response"] = [assert_status_hook]
+
+        retry_strategy = Retry(
+            total=3,
+            status_forcelist=[429, 500, 502, 503, 504],
+            method_whitelist=[
+                "HEAD",
+                "GET",
+                "PUT",
+                "POST",
+                "DELETE",
+                "OPTIONS",
+                "TRACE",
+            ],
+            backoff_factor=1,
+        )
+
+        # retry and timeout strategy
+        timeout_adapter = TimeoutHTTPAdapter(
+            timeout=self._config.timeout, max_retries=retry_strategy
+        )
+        self._client.mount("http://", timeout_adapter)
+        self._client.mount("https://", timeout_adapter)
+
+        # authentication
+        if self._config.user and self._config.password:
+            self._client.auth = (self._config.user, self._config.password)
+
+        # always use headers on each request
+        self._client.headers.update(
+            {
+                "Content-Type": "application/json",
+                "Accept-Charset": "utf-8",
+                "Cache-Control": "no-cache",
+            }
+        )
 
     def close(self) -> None:
         self._client.close()
@@ -51,19 +89,35 @@ class CouchDb:
             if e.response is not None:
                 if e.response.status_code in raise_status:
                     raise e
+
                 if e.response.status_code == 401:
                     sys.exit("Unauthorized: User or Password is wrong or missing.")
                 else:
                     sys.exit(
                         f"Got unexpected status code {e.response.status_code} with message {e.response.text}"  # noqa
                     )
-        except ConnectError as e:
+            else:
+                sys.exit(
+                    f"HTTPError connection with base_url {self._client.base_url} {str(e)}"
+                )
+
+        except ConnectionError as e:
             sys.exit(f"Error connecting with base_url {self._client.base_url} {str(e)}")
+
         except ConnectTimeout as e:
             sys.exit(
                 f"Timeout Error connecting with base_url {self._client.base_url} {str(e)}"
             )
+
+        except InvalidURL as e:
+            sys.exit(f"Got an invalid url {str(e)}")
+
+        except MissingSchema as e:
+            sys.exit(f"Got an invalid url with missing schema {str(e)}")
+
         except Exception as e:
+            print(type(e))
+            print(e)
             sys.exit(f"Got unexpected exception: {str(e)}")
 
     def create_db(self, db: str, exists_ok_if_empty: bool = True) -> None:

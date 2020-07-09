@@ -1,5 +1,5 @@
-import httpx
 import pytest
+from requests_toolbelt import sessions
 
 MASTER_DB = "master_testdb"
 
@@ -17,9 +17,8 @@ def get_rev_num_from_doc(doc: dict) -> int:
 
 @pytest.fixture(scope="module")
 def setup_masterdb() -> None:
-    with httpx.Client(
-        base_url="http://localhost:5984/", auth=("admin", "adminadmin"), timeout=3
-    ) as client:
+    with sessions.BaseUrlSession(base_url="http://localhost:5984/") as client:
+        client.auth = ("admin", "adminadmin")
         response = client.get(f"{MASTER_DB}")
         if response.status_code == 200:
             client.delete(f"{MASTER_DB}")
@@ -40,9 +39,8 @@ def setup_masterdb() -> None:
 
 @pytest.fixture(scope="function")
 def drop_dbs() -> None:
-    with httpx.Client(
-        base_url="http://localhost:5984/", auth=("admin", "adminadmin"), timeout=3
-    ) as client:
+    with sessions.BaseUrlSession(base_url="http://localhost:5984/") as client:
+        client.auth = ("admin", "adminadmin")
 
         all_dbs = client.get("_all_dbs").json()
         for db in all_dbs:

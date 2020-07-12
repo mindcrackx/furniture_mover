@@ -85,6 +85,9 @@ class CouchDb:
             }
         )
 
+        # ignore ssl certificate validation
+        self._client.verify = self._config.cert_verify
+
     def close(self) -> None:
         try:
             self._client.close()

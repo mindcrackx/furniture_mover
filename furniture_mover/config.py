@@ -9,6 +9,7 @@ class Config:
         password: Optional[str] = None,
         proxy: Optional[str] = None,
         timeout: float = 3,
+        cert_verify: bool = True,
     ) -> None:
         if not url.endswith("/"):
             self.url = url + "/"
@@ -25,3 +26,5 @@ class Config:
         except ValueError:
             raise ValueError(f"Timeout {timeout} is not alloewd.")
         self.timeout = timeout
+
+        self.cert_verify = cert_verify

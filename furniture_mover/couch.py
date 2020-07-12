@@ -1,6 +1,7 @@
 import sys
 from contextlib import contextmanager
-from typing import Iterator, List
+from copy import deepcopy
+from typing import Dict, Iterator, List
 
 from requests.adapters import HTTPAdapter
 from requests.exceptions import (
@@ -14,6 +15,9 @@ from requests.packages.urllib3.util.retry import Retry
 from requests_toolbelt import sessions
 
 from furniture_mover.config import Config
+
+TargetRevNum = int
+DocId = str
 
 
 class TimeoutHTTPAdapter(HTTPAdapter):
@@ -85,6 +89,7 @@ class CouchDb:
     def handle_web(self, raise_status: List[int] = []):
         try:
             yield
+
         except HTTPError as e:
             if e.response is not None:
                 if e.response.status_code in raise_status:
@@ -116,8 +121,6 @@ class CouchDb:
             sys.exit(f"Got an invalid url with missing schema {str(e)}")
 
         except Exception as e:
-            print(type(e))
-            print(e)
             sys.exit(f"Got unexpected exception: {str(e)}")
 
     def create_db(self, db: str, exists_ok_if_empty: bool = True) -> None:
@@ -150,41 +153,59 @@ class CouchDb:
         for row in data["rows"]:
             yield row["doc"]
 
-    def insert_doc(self, db: str, doc: dict, same_revision: bool = True) -> None:
-        def _get_rev_num_from_doc(doc: dict) -> int:
-            return int(doc["_rev"].split("-")[0])
+    def insert_bulk_docs(
+        self, db: str, docs: List[dict], same_revision: bool = True
+    ) -> None:
+        def _get_rev_num(rev) -> TargetRevNum:
+            return TargetRevNum(rev.split("-")[0])
 
-        def _get_rev_num_from_rev(rev: str) -> int:
-            return int(rev.split("-")[0])
+        initial_insert: List[dict] = deepcopy(docs)
+        for doc in initial_insert:
+            del doc["_rev"]
 
-        doc_id = doc["_id"]
-        doc_rev_num = _get_rev_num_from_doc(doc)
-        del doc["_rev"]
+        mapping_target_revnum: Dict[DocId, TargetRevNum] = {}
+        mapping_docid_to_doc: Dict[DocId, dict] = {}
+        if same_revision:
+            for doc in docs:
+                # ignore revision 1 (only docs with rev 2 and up have to be updated again)
+                doc_revnum = _get_rev_num(doc["_rev"])
+                if doc_revnum > 1:
+                    mapping_docid_to_doc[doc["_id"]] = doc
+                    mapping_target_revnum[doc["_id"]] = doc_revnum
 
+        # initial insert
         with self.handle_web():
-            response = self._client.put(f"{db}/{doc_id}", json=doc)
-            response.raise_for_status()
+            response = self._client.post(
+                f"{db}/_bulk_docs", json={"docs": initial_insert}
+            )
+            del initial_insert
 
-        if not same_revision or doc_rev_num == "1":
+            for doc_info in response.json():
+                if "error" in doc_info:
+                    sys.exit(f"Error inserting docs: {doc_info}")
+                elif same_revision:
+                    if mapping_target_revnum.get(doc_info["id"], None):
+                        mapping_docid_to_doc[doc_info["id"]]["_rev"] = doc_info["rev"]
+
+        # if only revision 1 is needed, then we are finished here.
+        if not same_revision:
             return
 
-        with self.handle_web():
-            response = self._client.get(f"{db}/{doc_id}")
-            response.raise_for_status()
-
-        current_doc_rev = response.json()["_rev"]
-        current_doc_rev_num = _get_rev_num_from_rev(current_doc_rev)
-
-        while current_doc_rev_num < doc_rev_num:
+        # 1 bulk update for each revision
+        while len(mapping_target_revnum) > 0:
             with self.handle_web():
-                updatresponse = self._client.put(
-                    f"{db}/{doc_id}?rev={current_doc_rev}", json=doc
+                response = self._client.post(
+                    f"{db}/_bulk_docs",
+                    json={"docs": list(mapping_docid_to_doc.values())},
                 )
-                updatresponse.raise_for_status()
-
-            with self.handle_web():
-                response = self._client.get(f"{db}/{doc_id}")
-                response.raise_for_status()
-
-            current_doc_rev = response.json()["_rev"]
-            current_doc_rev_num = _get_rev_num_from_rev(current_doc_rev)
+                for doc_info in response.json():
+                    if "error" in doc_info:
+                        sys.exit(f"Error updating doc: {doc_info}")
+                    if (
+                        _get_rev_num(doc_info["rev"])
+                        == mapping_target_revnum[doc_info["id"]]
+                    ):
+                        del mapping_target_revnum[doc_info["id"]]
+                        del mapping_docid_to_doc[doc_info["id"]]
+                    else:
+                        mapping_docid_to_doc[doc_info["id"]]["_rev"] = doc_info["rev"]

@@ -1,0 +1,60 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.8'
+        architecture: 'x64'
+    - name: Install poetry
+      run: pip install poetry
+    - name: Install dependencies
+      run: poetry install
+    - name: Run isort
+      run: |
+        poetry run isort -rc furniture_mover
+        poetry run isort -rc tests
+    - name: Run black
+      run: |
+        poetry run black furniture_mover
+        poetry run black tests
+    - name: Run flake8
+      run: |
+        poetry run flake8 furniture_mover
+        poetry run flake8 tests
+    - name: Run mypy
+      run: |
+        poetry run mypy furniture_mover
+        poetry run mypy tests
+
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      couchdb:
+        image: couchdb
+        env:
+          COUCHDB_USER: admin
+          COUCHDB_PASSWORD: adminadmin
+        ports:
+        - 5984:5984
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.8'
+        architecture: 'x64'
+    - name: Install poetry
+      run: pip install poetry
+    - name: Install dependencies
+      run: poetry install
+    - name: Run tests
+      run: poetry run pytest -v

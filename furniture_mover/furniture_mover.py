@@ -2,7 +2,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Union
+from typing import List, Union
 
 from furniture_mover.couch import CouchDb
 
@@ -30,14 +30,15 @@ class FurnitureMover:
         db_exists_ok_if_empty: bool = True,
     ) -> None:
         self._couch.create_db(db, db_exists_ok_if_empty)
+        docs: List[dict] = []
         try:
             with open(filepath, mode="r", encoding="utf-8") as inf:
                 for line in inf:
-                    self._couch.insert_doc(
-                        db, json.loads(line), same_revision=same_revision
-                    )
+                    docs.append(json.loads(line))
         except Exception as e:
             sys.exit(f"Exception opening or writing file: {str(e)}")
+
+        self._couch.insert_bulk_docs(db, docs, same_revision=same_revision)
 
     @staticmethod
     def from_all_docs_file(infile: Path, outfile: Path) -> None:

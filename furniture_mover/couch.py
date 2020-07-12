@@ -1,3 +1,4 @@
+import logging
 import sys
 from contextlib import contextmanager
 from copy import deepcopy
@@ -18,6 +19,8 @@ from furniture_mover.config import Config
 
 TargetRevNum = int
 DocId = str
+
+logger = logging.getLogger("couch")
 
 
 class TimeoutHTTPAdapter(HTTPAdapter):
@@ -83,7 +86,10 @@ class CouchDb:
         )
 
     def close(self) -> None:
-        self._client.close()
+        try:
+            self._client.close()
+        except Exception:
+            pass
 
     @contextmanager
     def handle_web(self, raise_status: List[int] = []):
@@ -96,56 +102,79 @@ class CouchDb:
                     raise e
 
                 if e.response.status_code == 401:
+                    logger.critical(
+                        "Unauthorized: User or Password is wrong or missing."
+                    )
                     sys.exit("Unauthorized: User or Password is wrong or missing.")
                 else:
+                    logger.critical(
+                        f"Got unexpected status code {e.response.status_code} with message {e.response.text}"  # noqa
+                    )
                     sys.exit(
                         f"Got unexpected status code {e.response.status_code} with message {e.response.text}"  # noqa
                     )
             else:
+                logger.critical(
+                    f"HTTPError connection with base_url {self._client.base_url} {str(e)}"
+                )
                 sys.exit(
                     f"HTTPError connection with base_url {self._client.base_url} {str(e)}"
                 )
 
         except ConnectionError as e:
+            logger.exception(e)
             sys.exit(f"Error connecting with base_url {self._client.base_url} {str(e)}")
 
         except ConnectTimeout as e:
+            logger.exception(e)
             sys.exit(
                 f"Timeout Error connecting with base_url {self._client.base_url} {str(e)}"
             )
 
         except InvalidURL as e:
+            logger.exception(e)
             sys.exit(f"Got an invalid url {str(e)}")
 
         except MissingSchema as e:
+            logger.exception(e)
             sys.exit(f"Got an invalid url with missing schema {str(e)}")
 
         except Exception as e:
+            logger.exception(e)
             sys.exit(f"Got unexpected exception: {str(e)}")
 
     def create_db(self, db: str, exists_ok_if_empty: bool = True) -> None:
+        logger.debug(
+            f"creating couch-db {db} with exists_ok_if_empty={exists_ok_if_empty}"
+        )
         try:
             with self.handle_web(raise_status=[412]):
-                response = self._client.put(f"{db}")
-                response.raise_for_status()
+                logger.info(f"creating couch-db {db}")
+                self._client.put(f"{db}")
         except HTTPError:
             if exists_ok_if_empty:
-                db_info = self._client.get(f"{db}")
-                db_info.raise_for_status()
+                with self.handle_web():
+                    db_info = self._client.get(f"{db}")
                 if db_info.json()["doc_count"] == 0:
                     return
                 else:
+                    logger.critical(f"Database {db} exists but is not empty. Aborting.")
                     sys.exit(f"Database {db} exists but is not empty. Aborting.")
             else:
+                logger.critical(f"Database {db} already exists. Aborting.")
                 sys.exit(f"Database {db} already exists. Aborting.")
 
     def get_all_docs(self, db: str) -> Iterator[dict]:
         with self.handle_web():
+            logger.info(f"getting {db}/_all_docs?include_docs=true")
             response = self._client.get(f"{db}/_all_docs?include_docs=true")
-            response.raise_for_status()
 
         data = response.json()
+        logger.debug(f"got data {data}")
         if "rows" not in data:
+            logger.critical(
+                f"got unexpected response, 'rows' missing in json. Response was {data}"
+            )
             sys.exit(
                 f"got unexpected response, 'rows' missing in json. Response was {data}"
             )
@@ -156,6 +185,8 @@ class CouchDb:
     def insert_bulk_docs(
         self, db: str, docs: List[dict], same_revision: bool = True
     ) -> None:
+        logger.debug(f"inserting bulk docs with same_revision={same_revision}")
+
         def _get_rev_num(rev) -> TargetRevNum:
             return TargetRevNum(rev.split("-")[0])
 
@@ -175,17 +206,23 @@ class CouchDb:
 
         # initial insert
         with self.handle_web():
+            logger.debug(f"bulk inserting with no revision: {initial_insert}")
             response = self._client.post(
                 f"{db}/_bulk_docs", json={"docs": initial_insert}
             )
             del initial_insert
 
+            has_errors = False
             for doc_info in response.json():
                 if "error" in doc_info:
-                    sys.exit(f"Error inserting docs: {doc_info}")
-                elif same_revision:
+                    logger.error(f"Error inserting docs: {doc_info}")
+                    has_errors = True
+                elif not has_errors and same_revision:
                     if mapping_target_revnum.get(doc_info["id"], None):
                         mapping_docid_to_doc[doc_info["id"]]["_rev"] = doc_info["rev"]
+
+            if has_errors:
+                sys.exit("Error inserting docs")
 
         # if only revision 1 is needed, then we are finished here.
         if not same_revision:
@@ -194,18 +231,28 @@ class CouchDb:
         # 1 bulk update for each revision
         while len(mapping_target_revnum) > 0:
             with self.handle_web():
+                logger.debug(f"bulk updating: {list(mapping_docid_to_doc.values())}")
                 response = self._client.post(
                     f"{db}/_bulk_docs",
                     json={"docs": list(mapping_docid_to_doc.values())},
                 )
+
+                has_errors = False
                 for doc_info in response.json():
                     if "error" in doc_info:
-                        sys.exit(f"Error updating doc: {doc_info}")
+                        logger.error(f"Error updating doc: {doc_info}")
+                        has_errors = True
+                        continue
+
                     if (
                         _get_rev_num(doc_info["rev"])
                         == mapping_target_revnum[doc_info["id"]]
                     ):
+                        # doc now has target_revision, can be ignored for next bulk update
                         del mapping_target_revnum[doc_info["id"]]
                         del mapping_docid_to_doc[doc_info["id"]]
                     else:
                         mapping_docid_to_doc[doc_info["id"]]["_rev"] = doc_info["rev"]
+
+                if has_errors:
+                    sys.exit("Error updating docs")

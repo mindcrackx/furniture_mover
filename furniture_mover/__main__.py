@@ -28,10 +28,16 @@ def import_data(
     timeout: float = typer.Option(3),
     db_exists_ok_if_empty: bool = typer.Option(True),
     same_revision: bool = typer.Option(True),
+    cert_verify: bool = typer.Option(True),
 ) -> None:
     logger.info("import got called")
     config = Config(
-        url=url, user=user, password=password, proxy=proxy, timeout=timeout,
+        url=url,
+        user=user,
+        password=password,
+        proxy=proxy,
+        timeout=timeout,
+        cert_verify=cert_verify,
     )
 
     fm = FurnitureMover(config)
@@ -50,10 +56,16 @@ def export_data(
     password: Optional[str] = typer.Option(None),
     proxy: Optional[str] = typer.Option(None),
     timeout: float = typer.Option(3),
+    cert_verify: bool = typer.Option(True),
 ) -> None:
     logger.info("export got called")
     config = Config(
-        url=url, user=user, password=password, proxy=proxy, timeout=timeout,
+        url=url,
+        user=user,
+        password=password,
+        proxy=proxy,
+        timeout=timeout,
+        cert_verify=cert_verify,
     )
 
     fm = FurnitureMover(config)

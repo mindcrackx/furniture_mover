@@ -1,3 +1,5 @@
+import logging
+import logging.config
 from pathlib import Path
 from typing import Optional
 
@@ -7,6 +9,12 @@ from furniture_mover.config import Config
 from furniture_mover.furniture_mover import FurnitureMover
 
 app = typer.Typer()
+
+logging.basicConfig(level=60)  # use 60 so nothing gets logged by default
+logger = logging.getLogger()
+
+if Path("furniture_mover.ini").exists():
+    logging.config.fileConfig("furniture_mover.ini")
 
 
 @app.command("import")
@@ -21,6 +29,7 @@ def import_data(
     db_exists_ok_if_empty: bool = typer.Option(True),
     same_revision: bool = typer.Option(True),
 ) -> None:
+    logger.info("import got called")
     config = Config(
         url=url, user=user, password=password, proxy=proxy, timeout=timeout,
     )
@@ -42,6 +51,7 @@ def export_data(
     proxy: Optional[str] = typer.Option(None),
     timeout: float = typer.Option(3),
 ) -> None:
+    logger.info("export got called")
     config = Config(
         url=url, user=user, password=password, proxy=proxy, timeout=timeout,
     )
@@ -55,11 +65,13 @@ def export_data(
 
 @app.command("export_from_all_docs_file")
 def export_data_from_all_docs_file(all_docs_filepath: Path, filepath: Path) -> None:
+    logger.info("export_from_all_docs_file got called")
     FurnitureMover.from_all_docs_file(all_docs_filepath, filepath)
 
 
 @app.command("filter")
 def filter(filter_file: Path, infile: Path) -> None:
+    logger.info("filter got called")
     FurnitureMover.filter_infile(filter_file, infile)
 
 

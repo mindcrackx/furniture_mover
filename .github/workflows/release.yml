@@ -1,0 +1,68 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  publish:
+    name: Publish for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: ./dist/furniture_mover.zip
+            asset_name: furniture_mover-linux-amd64.zip
+            build_deps: poetry add --dev pyinstaller
+            package_zip: |
+              cp ./furniture_mover.ini ./dist/
+              cp ./furniture_mover_filter.TEMPLATE.json ./dist/
+              cd ./dist/
+              zip -r ./furniture_mover.zip ./furniture_mover ./furniture_mover.ini ./furniture_mover_filter.TEMPLATE.json
+
+          - os: windows-latest
+            artifact_name: .\dist\furniture_mover.zip
+            asset_name: furniture_mover-windows-amd64.zip
+            build_deps: poetry add --dev pyinstaller pywin32-ctypes pefile
+            package_zip: |
+              Copy-Item .\furniture_mover.ini .\dist\
+              Copy-Item .\furniture_mover_filter.TEMPLATE.json .\dist\
+              cd .\dist
+              Compress-Archive -Path ".\furniture_mover.exe",".\furniture_mover.ini",".\furniture_mover_filter.TEMPLATE.json" -DestinationPath .\furniture_mover.zip
+
+          - os: macos-latest
+            artifact_name: ./dist/furniture_mover.zip
+            asset_name: furniture_mover-macos-amd64.zip
+            build_deps: poetry add --dev pyinstaller macholib
+            package_zip: |
+              cp ./furniture_mover.ini ./dist/
+              cp ./furniture_mover_filter.TEMPLATE.json ./dist/
+              cd ./dist/
+              zip -r ./furniture_mover.zip ./furniture_mover ./furniture_mover.ini ./furniture_mover_filter.TEMPLATE.json
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.8'
+        architecture: 'x64'
+    - name: Install poetry
+      run: pip install poetry
+    - name: Install dependencies for pyinstaller
+      run: ${{ matrix.build_deps }}
+
+    - name: Build
+      run: poetry run pyinstaller --onefile --clean --name furniture_mover ./furniture_mover/__main__.py
+    - name: Package together
+      run: ${{ matrix.package_zip }}
+    - name: Upload binaries to release
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: ${{ matrix.artifact_name }}
+        asset_name: ${{ matrix.asset_name }}
+        tag: ${{ github.ref }}
